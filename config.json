@@ -1,0 +1,8 @@
+{
+    "excel_file_name": "Form.xlsx",
+    "addresses_column_name": "Algorand Address ",
+    "note_to_send": "FrysCrypto reward",
+    "amount_in_microAlgos": 1e6,
+    "asset_index": 924268058,
+    "main_account_mnemonic": "your main account mnemonic"
+}
