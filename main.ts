@@ -19,7 +19,7 @@ xlData.forEach((row: any) => {
   console.log(await client.status().do());
   const account = algosdk.mnemonicToSecretKey(config.main_account_mnemonic);
   //send the same amount to each address of FrysCrypto (FRY) which has a contract number: 924268058
-  const amount = config.amount_in_microAlgos;
+  const FRYamount = config.amount_in_FRY;
   const enc = new TextEncoder();
   const note = enc.encode(config.note_to_send);
   const params = await client.getTransactionParams().do();
@@ -27,7 +27,7 @@ xlData.forEach((row: any) => {
   const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
       from: account.addr,
       to: address,
-      amount: amount,
+      amount: FRYamount,
       assetIndex: config.asset_index,
       note: note,
       suggestedParams: params,
