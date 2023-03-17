@@ -55,8 +55,7 @@ xlData.forEach((row) => {
     addresses.push(row[config_json_1.default.addresses_column_name]);
 });
 (() => __awaiter(void 0, void 0, void 0, function* () {
-    console.log(yield client.status().do());
-    //create an account
+    //create an accountmainTest.ts
     const account = algosdk.generateAccount();
     //send the same amount to each address of FrysCrypto (FRY) which has a contract number: 924268058
     const FRYamount = config_json_1.default.amount_in_FRY;
@@ -65,11 +64,10 @@ xlData.forEach((row) => {
     const params = yield client.getTransactionParams().do();
     const address = 'UKSBQH6FOHPZMEQ7YPDSD3AV54XSXRFG744W6WF4QUFEF5SLXVIL7SQ4GM';
     //get the last 100 transactions of the address using the indexer
-    const lastTransactions = yield indexer.lookupAccountTransactions(address).limit(1).do();
-    console.log(lastTransactions);
+    const lastTransactions = yield indexer.lookupAccountTransactions(address).limit(100).do();
     //get all the transactions of the address that were done in the last 25 hours
     const lastTransactionsInLast25Hours = lastTransactions.transactions.filter((transaction) => {
-        const transactionDate = new Date(transaction['confirmed-round-time'] * 1000);
+        const transactionDate = new Date(transaction['round-time'] * 1000);
         const currentDate = new Date();
         const diff = currentDate.getTime() - transactionDate.getTime();
         const diffHours = diff / 1000 / 60 / 60;
