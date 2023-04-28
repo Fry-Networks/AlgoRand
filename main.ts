@@ -1,10 +1,18 @@
-const token = '';
-const server = 'https://mainnet-api.algonode.network';
-const indexServer = 'https://algoindexer.algoexplorerapi.io/';
+const token = 'REDACTED_ROTATE_ME';
+const server = 'https://mainnet-algorand.api.purestake.io/ps2';
+const indexServer = 'https://mainnet-algorand.api.purestake.io/idx2';
+
 const port = 443;
 import * as algosdk from 'algosdk';
-const client = new algosdk.Algodv2(token, server, port);
-const indexer = new algosdk.Indexer(token, indexServer, port);
+const tokenToSend = {
+  'X-API-Key': token
+}
+
+
+const client = new algosdk.Algodv2(tokenToSend, server, port);
+
+const indexer = new algosdk.Indexer(tokenToSend, indexServer, port);
+
 import config from './config.json';
 //open the xlsx file and read the data
 import * as XLSX from 'xlsx';
