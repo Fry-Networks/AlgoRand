@@ -18,12 +18,13 @@ const indexer = new algosdk.Indexer(tokenToSend, indexServer, port);
 import config from './config.json';
 //open the xlsx file and read the data
 import * as XLSX from 'xlsx';
+import { filterEmailAddresses } from './email';
 
 
 const main = async () => {
 
   await filterMacAddresses(config.excel_file_name);
-
+  await filterEmailAddresses('updated.xlsx');
   const workbook = XLSX.readFile('updated.xlsx');
   const sheet_name_list = workbook.SheetNames;
   const xlData = XLSX.utils.sheet_to_json(workbook.Sheets[sheet_name_list[0]]);
