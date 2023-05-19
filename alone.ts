@@ -100,10 +100,7 @@ const main = async () => {
   }
 };
 
-main().catch((e) => {
-  console.log(e);
-});
-
+main()
 
 async function hasOptedInForAsset(address: string, assetId: number): Promise<boolean> {
   const accountInfo = await client.accountInformation(address).do();

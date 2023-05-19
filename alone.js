@@ -127,9 +127,7 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
         }
     }
 });
-main().catch((e) => {
-    console.log(e);
-});
+main();
 function hasOptedInForAsset(address, assetId) {
     return __awaiter(this, void 0, void 0, function* () {
         const accountInfo = yield client.accountInformation(address).do();
