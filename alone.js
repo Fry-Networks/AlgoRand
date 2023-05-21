@@ -43,13 +43,15 @@ const algosdk = __importStar(require("algosdk"));
 const tokenToSend = {
     'X-API-Key': token
 };
+const duplicates_1 = require("./duplicates");
 const client = new algosdk.Algodv2(tokenToSend, server, port);
 const indexer = new algosdk.Indexer(tokenToSend, indexServer, port);
 const config_json_1 = __importDefault(require("./config.json"));
 //open the xlsx file and read the data
 const XLSX = __importStar(require("xlsx"));
 const main = () => __awaiter(void 0, void 0, void 0, function* () {
-    const workbook = XLSX.readFile(config_json_1.default.excel_file_name);
+    yield (0, duplicates_1.filterDuplicates)(config_json_1.default.excel_file_name);
+    const workbook = XLSX.readFile('updated.xlsx');
     const sheet_name_list = workbook.SheetNames;
     const xlData = XLSX.utils.sheet_to_json(workbook.Sheets[sheet_name_list[0]]);
     //get the addresses from the xlsx file

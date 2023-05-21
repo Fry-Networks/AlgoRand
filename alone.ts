@@ -7,7 +7,7 @@ import * as algosdk from 'algosdk';
 const tokenToSend = {
   'X-API-Key': token
 }
-
+import { filterDuplicates } from './duplicates';
 
 const client = new algosdk.Algodv2(tokenToSend, server, port);
 
@@ -19,7 +19,8 @@ import * as XLSX from 'xlsx';
 
 
 const main = async () => {
-  const workbook = XLSX.readFile(config.excel_file_name);
+  await filterDuplicates(config.excel_file_name);
+  const workbook = XLSX.readFile('updated.xlsx');
   const sheet_name_list = workbook.SheetNames;
   const xlData = XLSX.utils.sheet_to_json(workbook.Sheets[sheet_name_list[0]]);
   //get the addresses from the xlsx file
