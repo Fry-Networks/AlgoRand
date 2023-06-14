@@ -2,7 +2,7 @@
     "excel_file_name": "Form.xlsx",
     "addresses_column_name": "Algorand Address ",
     "note_to_send": "FrysCrypto reward",
-    "amount_in_FRY": 42.86,
+    "amount_in_FRY": 5,
     "asset_index": 924268058,
     "main_account_mnemonic": "your main account mnemonic"
 }
