@@ -19,8 +19,8 @@ import * as XLSX from 'xlsx';
 
 
 const main = async () => {
-  await filterDuplicates(config.excel_file_name);
-  const workbook = XLSX.readFile('updated.xlsx');
+  //await filterDuplicates(config.excel_file_name);
+  const workbook = XLSX.readFile(config.excel_file_name);
   const sheet_name_list = workbook.SheetNames;
   const xlData = XLSX.utils.sheet_to_json(workbook.Sheets[sheet_name_list[0]]);
   //get the addresses from the xlsx file
@@ -28,15 +28,17 @@ const main = async () => {
   const addresses: string[] = [];
   const addressesCount = new Map<string, number>();
   xlData.forEach((row: any) => {
-    addresses.push(row[config.addresses_column_name]);
-    if (addressesCount.has(row[config.addresses_column_name])) {
-        const currentCount = addressesCount.get(row[config.addresses_column_name]) as number;
-        addressesCount.set(row[config.addresses_column_name], currentCount + 1);
-        }
-        else {
-            addressesCount.set(row[config.addresses_column_name], 1);
-        }
-  });
+    const currentAddress = row[config.addresses_column_name];
+    if (!addresses.includes(currentAddress)) {
+        addresses.push(currentAddress);
+    }
+    if (addressesCount.has(currentAddress)) {
+        const currentCount = addressesCount.get(currentAddress) as number;
+        addressesCount.set(currentAddress, currentCount + 1);
+    } else {
+        addressesCount.set(currentAddress, 1);
+    }
+});
 
 
   console.log(await client.status().do());
@@ -49,28 +51,28 @@ const main = async () => {
   for (const address of addresses) {
     try {
       const lastTransactions = await indexer.lookupAccountTransactions(address).limit(100).do();
-      //get all the transactions of the address that were done in the last 25 hours
+      //get all the transactions of the address that were done in the last 24 hours
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const lastTransactionsInLast25Hours: Array<any> = lastTransactions.transactions.filter((transaction: Transaction) => {
+      const lastTransactionsInLast24Hours: Array<any> = lastTransactions.transactions.filter((transaction: Transaction) => {
         const transactionDate = new Date(transaction['round-time'] * 1000);
         const isTheSender = transaction.sender === address;
         const isAmountZero = !transaction['asset-transfer-transaction'] || transaction['asset-transfer-transaction'].amount === 0;
         const isFRY = transaction['asset-transfer-transaction'] && transaction['asset-transfer-transaction']['asset-id'] === config.asset_index;
         return (transactionDate > oneDayAgo && isTheSender && isAmountZero && isFRY)
       });
-      //if there is at least 24 transactions in the last 25 hours, with 0 amount, then send the FRY
+      //if there is at least 24 transactions in the last 24 hours, with 0 amount, then send the FRY
       const count = addressesCount.get(address) as number;
-      const transactionsNeeded = 25 * count;
+      const transactionsNeeded = 24 * count;
       let mult = 1;
-      if (lastTransactionsInLast25Hours.length >= transactionsNeeded) {
+      if (lastTransactionsInLast24Hours.length >= transactionsNeeded) {
         mult = 1;
       } else {
-        mult = lastTransactionsInLast25Hours.length / transactionsNeeded;
+        mult = lastTransactionsInLast24Hours.length / transactionsNeeded;
       }
 
       //calculate the amount to send and round it to two numbers after the dot
       const amountToSend = Math.floor(Math.round(FRYamount * mult * 100) / 100)
-      console.log(`amount for ${address} is ${amountToSend} -- ${lastTransactionsInLast25Hours.length} transactions in the last 25 hours}`)
+      console.log(`amount for ${address} is ${amountToSend} -- ${lastTransactionsInLast24Hours.length} transactions in the last 24 hours}`)
       if (amountToSend > 0) {
 
         if (!(await hasOptedInForAsset(address, config.asset_index))) {
@@ -91,7 +93,7 @@ const main = async () => {
         const tx = (await client.sendRawTransaction(signedTxn).do());
         console.log("Transaction : " + tx.txId);
       } else {
-        console.log('The address: ' + address + ' has no transactions in the last 25 hours');
+        console.log('The address: ' + address + ' has no transactions in the last 24 hours');
       }
     } catch (e) {
       console.log(e);

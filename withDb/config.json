@@ -4,5 +4,6 @@
     "note_to_send": "FrysCrypto reward",
     "amount_in_FRY": 1e6,
     "asset_index": 924268058,
-    "main_account_mnemonic": "your main account mnemonic"
+    "main_account_mnemonic": "your main account mnemonic",
+    "miner_type": "all"
 }
