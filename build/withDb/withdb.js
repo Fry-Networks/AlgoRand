@@ -46,26 +46,54 @@ const tokenToSend = {
 const client = new algosdk.Algodv2(tokenToSend, server, port);
 const indexer = new algosdk.Indexer(tokenToSend, indexServer, port);
 const config_json_1 = __importDefault(require("./config.json"));
-//open the xlsx file and read the data
-const XLSX = __importStar(require("xlsx"));
+const connect_1 = require("./db/connect");
+const devices_schema_1 = require("./db/devices-schema");
+const users_schema_1 = __importDefault(require("./db/users-schema"));
 const main = () => __awaiter(void 0, void 0, void 0, function* () {
-    const workbook = XLSX.readFile(config_json_1.default.excel_file_name);
-    const sheet_name_list = workbook.SheetNames;
-    const xlData = XLSX.utils.sheet_to_json(workbook.Sheets[sheet_name_list[0]]);
+    //await filterDuplicates(config.excel_file_name);
+    yield (0, connect_1.connect)();
     //get the addresses from the xlsx file
     //get the name of the highest row of the 3rd column
     const addresses = [];
     const addressesCount = new Map();
-    xlData.forEach((row) => {
-        addresses.push(row[config_json_1.default.addresses_column_name]);
-        if (addressesCount.has(row[config_json_1.default.addresses_column_name])) {
-            const currentCount = addressesCount.get(row[config_json_1.default.addresses_column_name]);
-            addressesCount.set(row[config_json_1.default.addresses_column_name], currentCount + 1);
+    const miner_type = config_json_1.default.miner_type;
+    console.log("Regular Expression:", new RegExp('^' + miner_type, 'i'));
+    console.log("Miner Type:", miner_type);
+    const allDevices = miner_type && miner_type !== 'all'
+        ? yield devices_schema_1.DeviceModel.find({
+            is_registered: true,
+            miner_key: new RegExp('^' + miner_type + '-[A-Za-z0-9]{32}$', 'i')
+        })
+        : yield devices_schema_1.DeviceModel.find({ is_registered: true });
+    const users = new Map(); //key: address, value: array of devices
+    allDevices.map((device) => {
+        const stringifiedId = device.user_id.toString();
+        if (users.has(stringifiedId)) {
+            const devicesArray = users.get(stringifiedId);
+            devicesArray.push(device);
+            users.set(stringifiedId, devicesArray);
         }
         else {
-            addressesCount.set(row[config_json_1.default.addresses_column_name], 1);
+            users.set(stringifiedId, [device]);
         }
     });
+    const userPromises = Array.from(users.entries()).map(([userId, devices]) => __awaiter(void 0, void 0, void 0, function* () {
+        const user = yield users_schema_1.default.findById(userId);
+        const numberOfDevices = devices.length;
+        if (addressesCount.has(user.address)) {
+            const currentCount = addressesCount.get(user.address);
+            addressesCount.set(user.address, currentCount + numberOfDevices);
+        }
+        else {
+            addressesCount.set(user.address, numberOfDevices);
+        }
+        if (!addresses.includes(user.address)) {
+            addresses.push(user.address);
+        }
+    }));
+    // This will wait for all the user promises to finish before continuing to the next row
+    yield Promise.all(userPromises);
+    console.log(addressesCount);
     console.log(yield client.status().do());
     const account = algosdk.mnemonicToSecretKey(config_json_1.default.main_account_mnemonic);
     //send the same amount to each address of FrysCrypto (FRY) which has a contract number: 924268058
@@ -75,29 +103,29 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     const params = yield client.getTransactionParams().do();
     for (const address of addresses) {
         try {
-            const lastTransactions = yield indexer.lookupAccountTransactions(address).limit(100).do();
-            //get all the transactions of the address that were done in the last 25 hours
+            const count = addressesCount.get(address);
+            const transactionsNeeded = 24 * count;
+            const lastTransactions = yield indexer.lookupAccountTransactions(address).limit(transactionsNeeded + 10).do();
+            //get all the transactions of the address that were done in the last 24 hours
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-            const lastTransactionsInLast25Hours = lastTransactions.transactions.filter((transaction) => {
+            const lastTransactionsInLast24Hours = lastTransactions.transactions.filter((transaction) => {
                 const transactionDate = new Date(transaction['round-time'] * 1000);
                 const isTheSender = transaction.sender === address;
                 const isAmountZero = !transaction['asset-transfer-transaction'] || transaction['asset-transfer-transaction'].amount === 0;
                 const isFRY = transaction['asset-transfer-transaction'] && transaction['asset-transfer-transaction']['asset-id'] === config_json_1.default.asset_index;
                 return (transactionDate > oneDayAgo && isTheSender && isAmountZero && isFRY);
             });
-            //if there is at least 24 transactions in the last 25 hours, with 0 amount, then send the FRY
-            const count = addressesCount.get(address);
-            const transactionsNeeded = 25 * count;
+            //if there is at least 24 transactions in the last 24 hours, with 0 amount, then send the FRY
             let mult = 1;
-            if (lastTransactionsInLast25Hours.length >= transactionsNeeded) {
+            if (lastTransactionsInLast24Hours.length >= transactionsNeeded) {
                 mult = 1;
             }
             else {
-                mult = lastTransactionsInLast25Hours.length / transactionsNeeded;
+                mult = lastTransactionsInLast24Hours.length / transactionsNeeded;
             }
             //calculate the amount to send and round it to two numbers after the dot
             const amountToSend = Math.floor(Math.round(FRYamount * mult * 100) / 100);
-            console.log(`amount for ${address} is ${amountToSend} -- ${lastTransactionsInLast25Hours.length} transactions in the last 25 hours}`);
+            console.log(`amount for ${address} is ${amountToSend} -- ${lastTransactionsInLast24Hours.length} transactions in the last 24 hours}`);
             if (amountToSend > 0) {
                 if (!(yield hasOptedInForAsset(address, config_json_1.default.asset_index))) {
                     console.log(`Address ${address} has not opted in for asset ${config_json_1.default.asset_index}. Sending opt-in transaction.`);
@@ -117,7 +145,7 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
                 console.log("Transaction : " + tx.txId);
             }
             else {
-                console.log('The address: ' + address + ' has no transactions in the last 25 hours');
+                console.log('The address: ' + address + ' has no transactions in the last 24 hours');
             }
         }
         catch (e) {
@@ -127,9 +155,8 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
         }
     }
 });
-main().catch((e) => {
-    console.log(e);
-});
+main();
+setInterval(main, 24 * 60 * 60 * 1000);
 function hasOptedInForAsset(address, assetId) {
     return __awaiter(this, void 0, void 0, function* () {
         const accountInfo = yield client.accountInformation(address).do();
