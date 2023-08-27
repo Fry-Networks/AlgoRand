@@ -46,17 +46,12 @@ const tokenToSend = {
 const client = new algosdk.Algodv2(tokenToSend, server, port);
 const indexer = new algosdk.Indexer(tokenToSend, indexServer, port);
 const config_json_1 = __importDefault(require("./config.json"));
-//open the xlsx file and read the data
-const XLSX = __importStar(require("xlsx"));
 const connect_1 = require("./db/connect");
 const devices_schema_1 = require("./db/devices-schema");
 const users_schema_1 = __importDefault(require("./db/users-schema"));
 const main = () => __awaiter(void 0, void 0, void 0, function* () {
     //await filterDuplicates(config.excel_file_name);
     yield (0, connect_1.connect)();
-    const workbook = XLSX.readFile(config_json_1.default.excel_file_name);
-    const sheet_name_list = workbook.SheetNames;
-    const xlData = XLSX.utils.sheet_to_json(workbook.Sheets[sheet_name_list[0]]);
     //get the addresses from the xlsx file
     //get the name of the highest row of the 3rd column
     const addresses = [];
@@ -70,22 +65,6 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
             miner_key: new RegExp('^' + miner_type + '-[A-Za-z0-9]{32}$', 'i')
         })
         : yield devices_schema_1.DeviceModel.find({ is_registered: true });
-    console.log(allDevices.length);
-    const promises = xlData.map((row) => __awaiter(void 0, void 0, void 0, function* () {
-        const currentAddress = row[config_json_1.default.addresses_column_name];
-        if (!addresses.includes(currentAddress)) {
-            addresses.push(currentAddress);
-        }
-        if (addressesCount.has(currentAddress)) {
-            const currentCount = addressesCount.get(currentAddress);
-            addressesCount.set(currentAddress, currentCount + 1);
-        }
-        else {
-            addressesCount.set(currentAddress, 1);
-        }
-    }));
-    // This will wait for all the row promises to finish
-    yield Promise.all(promises);
     const users = new Map(); //key: address, value: array of devices
     allDevices.map((device) => {
         const stringifiedId = device.user_id.toString();
@@ -115,7 +94,6 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     // This will wait for all the user promises to finish before continuing to the next row
     yield Promise.all(userPromises);
     console.log(addressesCount);
-    return;
     console.log(yield client.status().do());
     const account = algosdk.mnemonicToSecretKey(config_json_1.default.main_account_mnemonic);
     //send the same amount to each address of FrysCrypto (FRY) which has a contract number: 924268058

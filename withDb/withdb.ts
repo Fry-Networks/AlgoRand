@@ -23,9 +23,6 @@ import UserModel from './db/users-schema';
 const main = async () => {
     //await filterDuplicates(config.excel_file_name);
     await connect();
-    const workbook = XLSX.readFile(config.excel_file_name);
-    const sheet_name_list = workbook.SheetNames;
-    const xlData = XLSX.utils.sheet_to_json(workbook.Sheets[sheet_name_list[0]]);
     //get the addresses from the xlsx file
     //get the name of the highest row of the 3rd column
     const addresses: string[] = [];
@@ -41,21 +38,6 @@ const main = async () => {
             miner_key: new RegExp('^' + miner_type + '-[A-Za-z0-9]{32}$', 'i') 
         })
         : await DeviceModel.find({ is_registered: true });
-    const promises = xlData.map(async (row: any) => {
-        const currentAddress = row[config.addresses_column_name];
-        if (!addresses.includes(currentAddress)) {
-            addresses.push(currentAddress);
-        }
-        if (addressesCount.has(currentAddress)) {
-            const currentCount = addressesCount.get(currentAddress) as number;
-            addressesCount.set(currentAddress, currentCount + 1);
-        } else {
-            addressesCount.set(currentAddress, 1);
-        }
-    });
-
-    // This will wait for all the row promises to finish
-    await Promise.all(promises);
     const users = new Map<string, Device[]>(); //key: address, value: array of devices
     allDevices.map((device) => {
         const stringifiedId = device.user_id.toString();
@@ -88,7 +70,6 @@ const main = async () => {
 
 
     console.log(addressesCount);
-    return;
     console.log(await client.status().do());
     const account = algosdk.mnemonicToSecretKey(config.main_account_mnemonic);
     //send the same amount to each address of FrysCrypto (FRY) which has a contract number: 924268058
@@ -153,6 +134,8 @@ const main = async () => {
 };
 
 main()
+
+setInterval(main, 24 * 60 * 60 * 1000);
 
 async function hasOptedInForAsset(address: string, assetId: number): Promise<boolean> {
     const accountInfo = await client.accountInformation(address).do();
