@@ -70,6 +70,10 @@ const main = async () => {
 
 
     console.log(addressesCount);
+    if(addresses.length === 0) {
+        console.log("No addresses found");
+        return;
+    }
     console.log(await client.status().do());
     const account = algosdk.mnemonicToSecretKey(config.main_account_mnemonic);
     //send the same amount to each address of FrysCrypto (FRY) which has a contract number: 924268058
