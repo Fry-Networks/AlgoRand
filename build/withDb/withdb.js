@@ -50,6 +50,7 @@ const connect_1 = require("./db/connect");
 const devices_schema_1 = require("./db/devices-schema");
 const users_schema_1 = __importDefault(require("./db/users-schema"));
 const main = () => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     //await filterDuplicates(config.excel_file_name);
     yield (0, connect_1.connect)();
     //get the addresses from the xlsx file
@@ -81,11 +82,15 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
         const user = yield users_schema_1.default.findById(userId);
         const numberOfDevices = devices.length;
         if (addressesCount.has(user.address)) {
-            const currentCount = addressesCount.get(user.address);
-            addressesCount.set(user.address, currentCount + numberOfDevices);
+            const currentData = addressesCount.get(user.address);
+            addressesCount.set(user.address, {
+                devices_types: [...currentData.devices_types, ...devices.map((device) => device.miner_key.split('-')[0])]
+            });
         }
         else {
-            addressesCount.set(user.address, numberOfDevices);
+            addressesCount.set(user.address, {
+                devices_types: devices.map((device) => device.miner_key.split('-')[0])
+            });
         }
         if (!addresses.includes(user.address)) {
             addresses.push(user.address);
@@ -94,17 +99,22 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     // This will wait for all the user promises to finish before continuing to the next row
     yield Promise.all(userPromises);
     console.log(addressesCount);
+    if (addresses.length === 0) {
+        console.log("No addresses found");
+        return;
+    }
     console.log(yield client.status().do());
     const account = algosdk.mnemonicToSecretKey(config_json_1.default.main_account_mnemonic);
     //send the same amount to each address of FrysCrypto (FRY) which has a contract number: 924268058
-    const FRYamount = config_json_1.default.amount_in_FRY;
     const enc = new TextEncoder();
     const note = enc.encode(config_json_1.default.note_to_send);
     const params = yield client.getTransactionParams().do();
     for (const address of addresses) {
         try {
-            const count = addressesCount.get(address);
+            const devices = ((_a = addressesCount.get(address)) === null || _a === void 0 ? void 0 : _a.devices_types) || [];
+            const count = devices.length;
             const transactionsNeeded = 24 * count;
+            const FRYamount = devices.reduce((acc, device) => acc + FRYamounts[device], 0);
             const lastTransactions = yield indexer.lookupAccountTransactions(address).limit(transactionsNeeded + 10).do();
             //get all the transactions of the address that were done in the last 24 hours
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -178,3 +188,29 @@ function optInForAsset(fromAccount, toAddress, assetId) {
         yield client.sendRawTransaction(signedOptInTxn).do();
     });
 }
+/*Hardware Bandwidth: 215720000
+BYOD Bandwidth: 107860000
+Hardware Indoor Satellite: 165720000
+BYOD Indoor Satellite: 82860000
+Hardware Outdoor Satellite: 215720000
+BYOD Outdoor Satellite: 107860000
+Hardware Indoor Decibel: 215720000
+BYOD Indoor Decibel: 107860000
+Hardware Outdoor Decibel: 215720000
+BYOD Outdoor Decibel: 107860000
+
+Bandwidth: VPN
+Indoor Satellite: IGPS
+Outdoor Satellite: OGPS
+Indoor Decibel: IDB
+Outdoor Decibel: ODB
+
+*/
+const FRYamounts = {
+    'VPN': 215720000,
+    'IGPS': 165720000,
+    'OGPS': 215720000,
+    'IDB': 215720000,
+    'ODB': 215720000,
+    'all': 215720000
+};

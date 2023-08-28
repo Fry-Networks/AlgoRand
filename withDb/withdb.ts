@@ -26,7 +26,9 @@ const main = async () => {
     //get the addresses from the xlsx file
     //get the name of the highest row of the 3rd column
     const addresses: string[] = [];
-    const addressesCount = new Map<string, number>();
+    const addressesCount = new Map<string, {
+        devices_types: string[]
+    }>();
 
     const miner_type = config.miner_type as MinerType;
     console.log("Regular Expression:", new RegExp('^' + miner_type, 'i'));
@@ -35,7 +37,7 @@ const main = async () => {
     const allDevices = miner_type && miner_type !== 'all'
         ? await DeviceModel.find({
             is_registered: true,
-            miner_key: new RegExp('^' + miner_type + '-[A-Za-z0-9]{32}$', 'i') 
+            miner_key: new RegExp('^' + miner_type + '-[A-Za-z0-9]{32}$', 'i')
         })
         : await DeviceModel.find({ is_registered: true });
     const users = new Map<string, Device[]>(); //key: address, value: array of devices
@@ -55,10 +57,15 @@ const main = async () => {
         const numberOfDevices = devices.length;
 
         if (addressesCount.has(user.address)) {
-            const currentCount = addressesCount.get(user.address) as number;
-            addressesCount.set(user.address, currentCount + numberOfDevices);
+            const currentData = addressesCount.get(user.address)!;
+            addressesCount.set(user.address, {
+                devices_types: [...currentData.devices_types, ...devices.map((device) => device.miner_key.split('-')[0])]
+            });
+
         } else {
-            addressesCount.set(user.address, numberOfDevices);
+            addressesCount.set(user.address, {
+                devices_types: devices.map((device) => device.miner_key.split('-')[0])
+            });
         }
         if (!addresses.includes(user.address)) {
             addresses.push(user.address);
@@ -70,21 +77,22 @@ const main = async () => {
 
 
     console.log(addressesCount);
-    if(addresses.length === 0) {
+    if (addresses.length === 0) {
         console.log("No addresses found");
         return;
     }
     console.log(await client.status().do());
     const account = algosdk.mnemonicToSecretKey(config.main_account_mnemonic);
     //send the same amount to each address of FrysCrypto (FRY) which has a contract number: 924268058
-    const FRYamount = FRYamounts[miner_type];
     const enc = new TextEncoder();
     const note = enc.encode(config.note_to_send);
     const params = await client.getTransactionParams().do();
     for (const address of addresses) {
         try {
-            const count = addressesCount.get(address) as number;
+            const devices = addressesCount.get(address)?.devices_types || [];
+            const count = devices.length;
             const transactionsNeeded = 24 * count;
+            const FRYamount = devices.reduce((acc, device) => acc + FRYamounts[device as MinerType], 0);
             const lastTransactions = await indexer.lookupAccountTransactions(address).limit(transactionsNeeded + 10).do();
             //get all the transactions of the address that were done in the last 24 hours
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -107,6 +115,7 @@ const main = async () => {
             //calculate the amount to send and round it to two numbers after the dot
             const amountToSend = Math.floor(Math.round(FRYamount * mult * 100) / 100)
             console.log(`amount for ${address} is ${amountToSend} -- ${lastTransactionsInLast24Hours.length} transactions in the last 24 hours}`)
+         
             if (amountToSend > 0) {
 
                 if (!(await hasOptedInForAsset(address, config.asset_index))) {
