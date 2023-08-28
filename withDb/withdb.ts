@@ -12,7 +12,7 @@ const client = new algosdk.Algodv2(tokenToSend, server, port);
 
 const indexer = new algosdk.Indexer(tokenToSend, indexServer, port);
 
-import config from './config.json';
+import config from './config.json'
 //open the xlsx file and read the data
 import * as XLSX from 'xlsx';
 import { connect } from './db/connect';
@@ -28,7 +28,7 @@ const main = async () => {
     const addresses: string[] = [];
     const addressesCount = new Map<string, number>();
 
-    const miner_type = config.miner_type;
+    const miner_type = config.miner_type as MinerType;
     console.log("Regular Expression:", new RegExp('^' + miner_type, 'i'));
     console.log("Miner Type:", miner_type);
 
@@ -77,7 +77,7 @@ const main = async () => {
     console.log(await client.status().do());
     const account = algosdk.mnemonicToSecretKey(config.main_account_mnemonic);
     //send the same amount to each address of FrysCrypto (FRY) which has a contract number: 924268058
-    const FRYamount = config.amount_in_FRY;
+    const FRYamount = FRYamounts[miner_type];
     const enc = new TextEncoder();
     const note = enc.encode(config.note_to_send);
     const params = await client.getTransactionParams().do();
@@ -159,8 +159,32 @@ async function optInForAsset(fromAccount: algosdk.Account, toAddress: string, as
     await client.sendRawTransaction(signedOptInTxn).do();
 }
 
+/*Hardware Bandwidth: 215720000
+BYOD Bandwidth: 107860000
+Hardware Indoor Satellite: 165720000 
+BYOD Indoor Satellite: 82860000
+Hardware Outdoor Satellite: 215720000
+BYOD Outdoor Satellite: 107860000
+Hardware Indoor Decibel: 215720000
+BYOD Indoor Decibel: 107860000
+Hardware Outdoor Decibel: 215720000
+BYOD Outdoor Decibel: 107860000
 
+Bandwidth: VPN
+Indoor Satellite: IGPS
+Outdoor Satellite: OGPS
+Indoor Decibel: IDB
+Outdoor Decibel: ODB
 
+*/
+const FRYamounts = {
+    'VPN': 215720000,
+    'IGPS': 165720000,
+    'OGPS': 215720000,
+    'IDB': 215720000,
+    'ODB': 215720000,
+    'all': 215720000
+} as const;
 
 interface Transaction {
     'close-rewards': number;
@@ -186,3 +210,5 @@ interface Transaction {
     signature: Object;
     'tx-type': string;
 }
+
+type MinerType = 'VPN' | 'IGPS' | 'OGPS' | 'IDB' | 'ODB' | 'all';
