@@ -1,6 +1,6 @@
-const token = 'REDACTED_ROTATE_ME';
-const server = 'https://mainnet-algorand.api.purestake.io/ps2';
-const indexServer = 'https://mainnet-algorand.api.purestake.io/idx2';
+const token = '';
+const server = 'https://xna-mainnet-api.algonode.cloud/';
+const indexServer = 'https://mainnet-idx.algonode.cloud/';
 
 const port = 443;
 import * as algosdk from 'algosdk';
