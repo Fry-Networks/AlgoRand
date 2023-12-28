@@ -35,9 +35,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const token = 'REDACTED_ROTATE_ME';
-const server = 'https://mainnet-algorand.api.purestake.io/ps2';
-const indexServer = 'https://mainnet-algorand.api.purestake.io/idx2';
+const token = '';
+const server = 'https://xna-mainnet-api.algonode.cloud/';
+const indexServer = 'https://mainnet-idx.algonode.cloud/';
 const port = 443;
 const algosdk = __importStar(require("algosdk"));
 const tokenToSend = {
@@ -55,4 +55,164 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     yield (0, connect_1.connect)();
     //get the addresses from the xlsx file
     //get the name of the highest row of the 3rd column
-    
+    const addresses = [];
+    const addressesCount = new Map();
+    const miner_type = config_json_1.default.miner_type;
+    console.log("Regular Expression:", new RegExp('^' + miner_type, 'i'));
+    console.log("Miner Type:", miner_type);
+    const allDevices = miner_type && miner_type !== 'all'
+        ? yield devices_schema_1.DeviceModel.find({
+            is_registered: true,
+            miner_key: new RegExp('^' + miner_type + '-[A-Za-z0-9]{32}$', 'i')
+        })
+        : yield devices_schema_1.DeviceModel.find({ is_registered: true });
+    const users = new Map(); //key: address, value: array of devices
+    allDevices.map((device) => {
+        const stringifiedId = device.user_id.toString();
+        if (users.has(stringifiedId)) {
+            const devicesArray = users.get(stringifiedId);
+            devicesArray.push(device);
+            users.set(stringifiedId, devicesArray);
+        }
+        else {
+            users.set(stringifiedId, [device]);
+        }
+    });
+    const userPromises = Array.from(users.entries()).map(([userId, devices]) => __awaiter(void 0, void 0, void 0, function* () {
+        const user = yield users_schema_1.default.findById(userId);
+        if (!user.address)
+            return;
+        const numberOfDevices = devices.length;
+        if (addressesCount.has(user.address)) {
+            const currentData = addressesCount.get(user.address);
+            addressesCount.set(user.address, {
+                devices_types: [...currentData.devices_types, ...devices.map((device) => device.miner_key.split('-')[0])]
+            });
+        }
+        else {
+            addressesCount.set(user.address, {
+                devices_types: devices.map((device) => device.miner_key.split('-')[0])
+            });
+        }
+        if (!addresses.includes(user.address)) {
+            addresses.push(user.address);
+        }
+    }));
+    // This will wait for all the user promises to finish before continuing to the next row
+    yield Promise.all(userPromises);
+    console.log(addressesCount);
+    if (addresses.length === 0) {
+        console.log("No addresses found");
+        return;
+    }
+    console.log(yield client.status().do());
+    const account = algosdk.mnemonicToSecretKey(config_json_1.default.main_account_mnemonic);
+    //send the same amount to each address of FrysCrypto (FRY) which has a contract number: 924268058
+    const enc = new TextEncoder();
+    const note = enc.encode(config_json_1.default.note_to_send);
+    const params = yield client.getTransactionParams().do();
+    for (const address of addresses) {
+        try {
+            const devices = ((_a = addressesCount.get(address)) === null || _a === void 0 ? void 0 : _a.devices_types) || [];
+            const count = devices.length;
+            const transactionsNeeded = 24 * count;
+            const FRYamount = devices.reduce((acc, device) => acc + FRYamounts[device], 0);
+            const lastTransactions = yield indexer.lookupAccountTransactions(address).limit(transactionsNeeded + 10).do();
+            //get all the transactions of the address that were done in the last 24 hours
+            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const lastTransactionsInLast24Hours = lastTransactions.transactions.filter((transaction) => {
+                const transactionDate = new Date(transaction['round-time'] * 1000);
+                const isTheSender = transaction.sender === address;
+                const isAmountZero = !transaction['asset-transfer-transaction'] || transaction['asset-transfer-transaction'].amount === 0;
+                const isFRY = transaction['asset-transfer-transaction'] && transaction['asset-transfer-transaction']['asset-id'] === config_json_1.default.asset_index;
+                return (transactionDate > oneDayAgo && isTheSender && isAmountZero && isFRY);
+            });
+            //if there is at least 24 transactions in the last 24 hours, with 0 amount, then send the FRY
+            let mult = 1;
+            if (lastTransactionsInLast24Hours.length >= transactionsNeeded) {
+                mult = 1;
+            }
+            else {
+                mult = lastTransactionsInLast24Hours.length / transactionsNeeded;
+            }
+            //calculate the amount to send and round it to two numbers after the dot
+            const amountToSend = Math.floor(Math.round(FRYamount * mult * 100) / 100);
+            console.log(`amount for ${address} is ${amountToSend} -- ${lastTransactionsInLast24Hours.length} transactions in the last 24 hours}`);
+            if (amountToSend > 0) {
+                if (!(yield hasOptedInForAsset(address, config_json_1.default.asset_index))) {
+                    console.log(`Address ${address} has not opted in for asset ${config_json_1.default.asset_index}. Sending opt-in transaction.`);
+                    yield optInForAsset(account, address, config_json_1.default.asset_index);
+                }
+                const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+                    from: account.addr,
+                    to: address,
+                    amount: amountToSend,
+                    assetIndex: config_json_1.default.asset_index,
+                    note: note,
+                    suggestedParams: params,
+                });
+                //convert the account sk object to Uint8Array
+                const signedTxn = txn.signTxn(account.sk);
+                const tx = (yield client.sendRawTransaction(signedTxn).do());
+                console.log("Transaction : " + tx.txId);
+            }
+            else {
+                console.log('The address: ' + address + ' has no transactions in the last 24 hours');
+            }
+        }
+        catch (e) {
+            console.log(e);
+            console.log('Error for address: ' + address);
+            console.log('-------------------------------------');
+        }
+    }
+});
+main();
+setInterval(main, 24 * 60 * 60 * 1000);
+function hasOptedInForAsset(address, assetId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const accountInfo = yield client.accountInformation(address).do();
+        const assets = accountInfo['assets'] || [];
+        return assets.some((asset) => asset['asset-id'] === assetId);
+    });
+}
+function optInForAsset(fromAccount, toAddress, assetId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const params = yield client.getTransactionParams().do();
+        const optInTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+            from: fromAccount.addr,
+            to: toAddress,
+            amount: 0,
+            assetIndex: assetId,
+            suggestedParams: params,
+        });
+        const signedOptInTxn = optInTxn.signTxn(fromAccount.sk);
+        yield client.sendRawTransaction(signedOptInTxn).do();
+    });
+}
+/*Hardware Bandwidth: 215720000
+BYOD Bandwidth: 107860000
+Hardware Indoor Satellite: 165720000
+BYOD Indoor Satellite: 82860000
+Hardware Outdoor Satellite: 215720000
+BYOD Outdoor Satellite: 107860000
+Hardware Indoor Decibel: 215720000
+BYOD Indoor Decibel: 107860000
+Hardware Outdoor Decibel: 215720000
+BYOD Outdoor Decibel: 107860000
+
+Bandwidth: VPN
+Indoor Satellite: IGPS
+Outdoor Satellite: OGPS
+Indoor Decibel: IDB
+Outdoor Decibel: ODB
+
+*/
+const FRYamounts = {
+    'VPN': 215720000,
+    'IGPS': 165720000,
+    'OGPS': 215720000,
+    'IDB': 215720000,
+    'ODB': 215720000,
+    'all': 215720000
+};

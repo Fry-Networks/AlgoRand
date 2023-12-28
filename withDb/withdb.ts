@@ -54,6 +54,7 @@ const main = async () => {
 
     const userPromises = Array.from(users.entries()).map(async ([userId, devices]) => {
         const user = await UserModel.findById(userId);
+        if(!user.address) return;
         const numberOfDevices = devices.length;
 
         if (addressesCount.has(user.address)) {
@@ -74,8 +75,6 @@ const main = async () => {
 
     // This will wait for all the user promises to finish before continuing to the next row
     await Promise.all(userPromises);
-
-
     console.log(addressesCount);
     if (addresses.length === 0) {
         console.log("No addresses found");
@@ -96,6 +95,7 @@ const main = async () => {
             const lastTransactions = await indexer.lookupAccountTransactions(address).limit(transactionsNeeded + 10).do();
             //get all the transactions of the address that were done in the last 24 hours
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            
             const lastTransactionsInLast24Hours: Array<any> = lastTransactions.transactions.filter((transaction: Transaction) => {
                 const transactionDate = new Date(transaction['round-time'] * 1000);
                 const isTheSender = transaction.sender === address;
@@ -103,6 +103,7 @@ const main = async () => {
                 const isFRY = transaction['asset-transfer-transaction'] && transaction['asset-transfer-transaction']['asset-id'] === config.asset_index;
                 return (transactionDate > oneDayAgo && isTheSender && isAmountZero && isFRY)
             });
+            
             //if there is at least 24 transactions in the last 24 hours, with 0 amount, then send the FRY
 
             let mult = 1;
