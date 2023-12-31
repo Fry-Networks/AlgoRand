@@ -18,16 +18,20 @@ require("dotenv/config");
 const node_events_1 = require("node:events");
 function connect() {
     return __awaiter(this, void 0, void 0, function* () {
+        //check if connected
+        if (mongoose_1.default.connection.readyState >= 1) {
+            return;
+        }
         const uri = process.env.MONGO_URI;
         if (!uri) {
             throw new Error('MONGO_URI not set!');
         }
         console.log('Connecting to MongoDB...');
-        yield mongoose_1.default.connect(uri);
-        mongoose_1.default.connection.useDb('weather');
         mongoose_1.default.connection.on('connected', () => {
             console.log('Connected to MongoDB!');
         });
+        yield mongoose_1.default.connect(uri);
+        mongoose_1.default.connection.useDb('weather');
         mongoose_1.default.connection.on('error', (err) => {
             console.error(`Mongoose connection error:\n${err.stack}`);
         });

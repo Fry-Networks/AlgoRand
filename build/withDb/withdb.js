@@ -49,6 +49,7 @@ const config_json_1 = __importDefault(require("./config.json"));
 const connect_1 = require("./db/connect");
 const devices_schema_1 = require("./db/devices-schema");
 const users_schema_1 = __importDefault(require("./db/users-schema"));
+const products_schema_1 = require("./db/products-schema");
 const main = () => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     //await filterDuplicates(config.excel_file_name);
@@ -57,15 +58,7 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     //get the name of the highest row of the 3rd column
     const addresses = [];
     const addressesCount = new Map();
-    const miner_type = config_json_1.default.miner_type;
-    console.log("Regular Expression:", new RegExp('^' + miner_type, 'i'));
-    console.log("Miner Type:", miner_type);
-    const allDevices = miner_type && miner_type !== 'all'
-        ? yield devices_schema_1.DeviceModel.find({
-            is_registered: true,
-            miner_key: new RegExp('^' + miner_type + '-[A-Za-z0-9]{32}$', 'i')
-        })
-        : yield devices_schema_1.DeviceModel.find({ is_registered: true });
+    const allDevices = yield devices_schema_1.DeviceModel.find({ is_registered: true });
     const users = new Map(); //key: address, value: array of devices
     allDevices.map((device) => {
         const stringifiedId = device.user_id.toString();
@@ -83,15 +76,21 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
         if (!user.address)
             return;
         const numberOfDevices = devices.length;
+        // Prepare data for each device, including its type and verified status
+        const deviceData = devices.map(device => ({
+            type: device.miner_key.split('-')[0],
+            verified: device.verified // Assuming 'verified' is a boolean property of each device
+        }));
         if (addressesCount.has(user.address)) {
             const currentData = addressesCount.get(user.address);
             addressesCount.set(user.address, {
-                devices_types: [...currentData.devices_types, ...devices.map((device) => device.miner_key.split('-')[0])]
+                // Spread the existing devices and add the new device data
+                devices_info: [...currentData.devices_info, ...deviceData]
             });
         }
         else {
             addressesCount.set(user.address, {
-                devices_types: devices.map((device) => device.miner_key.split('-')[0])
+                devices_info: deviceData // Set the new device data
             });
         }
         if (!addresses.includes(user.address)) {
@@ -111,12 +110,18 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     const enc = new TextEncoder();
     const note = enc.encode(config_json_1.default.note_to_send);
     const params = yield client.getTransactionParams().do();
+    const products = yield products_schema_1.ProductModel.find({});
     for (const address of addresses) {
         try {
-            const devices = ((_a = addressesCount.get(address)) === null || _a === void 0 ? void 0 : _a.devices_types) || [];
+            const devices = ((_a = addressesCount.get(address)) === null || _a === void 0 ? void 0 : _a.devices_info) || [];
             const count = devices.length;
             const transactionsNeeded = 24 * count;
-            const FRYamount = devices.reduce((acc, device) => acc + FRYamounts[device], 0);
+            const FRYamount = devices.reduce((acc, device) => {
+                var _a, _b;
+                const associatedProduct = products.find((product) => product.key === device.type);
+                const reward = (device.verified ? (_a = associatedProduct === null || associatedProduct === void 0 ? void 0 : associatedProduct.reward) === null || _a === void 0 ? void 0 : _a.verified : (_b = associatedProduct === null || associatedProduct === void 0 ? void 0 : associatedProduct.reward) === null || _b === void 0 ? void 0 : _b.unverified) || 0;
+                return acc + reward;
+            }, 0);
             const lastTransactions = yield indexer.lookupAccountTransactions(address).limit(transactionsNeeded + 10).do();
             //get all the transactions of the address that were done in the last 24 hours
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -190,29 +195,3 @@ function optInForAsset(fromAccount, toAddress, assetId) {
         yield client.sendRawTransaction(signedOptInTxn).do();
     });
 }
-/*Hardware Bandwidth: 215720000
-BYOD Bandwidth: 107860000
-Hardware Indoor Satellite: 165720000
-BYOD Indoor Satellite: 82860000
-Hardware Outdoor Satellite: 215720000
-BYOD Outdoor Satellite: 107860000
-Hardware Indoor Decibel: 215720000
-BYOD Indoor Decibel: 107860000
-Hardware Outdoor Decibel: 215720000
-BYOD Outdoor Decibel: 107860000
-
-Bandwidth: VPN
-Indoor Satellite: IGPS
-Outdoor Satellite: OGPS
-Indoor Decibel: IDB
-Outdoor Decibel: ODB
-
-*/
-const FRYamounts = {
-    'VPN': 215720000,
-    'IGPS': 165720000,
-    'OGPS': 215720000,
-    'IDB': 215720000,
-    'ODB': 215720000,
-    'all': 215720000
-};

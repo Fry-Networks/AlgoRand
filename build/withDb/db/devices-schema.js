@@ -11,6 +11,8 @@ exports.devicesSchema = new mongoose_1.default.Schema({
     name: String,
     created_at: { type: Date, default: Date.now },
     is_registered: { type: Boolean, default: false },
-    registered_at: Date
+    registered_at: Date,
+    verified: { type: Boolean, default: false },
+    verified_at: { type: Date, default: null },
 });
 exports.DeviceModel = mongoose_1.default.model('devices', exports.devicesSchema);

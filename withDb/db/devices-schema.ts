@@ -5,7 +5,9 @@ export const devicesSchema = new mongoose.Schema({
     name: String,
     created_at: { type: Date, default: Date.now },
     is_registered: { type: Boolean, default: false },
-    registered_at: Date
+    registered_at: Date,
+    verified: { type: Boolean, default: false },
+    verified_at: { type: Date, default: null },
  
 });
 export interface Device extends mongoose.Document {
@@ -15,6 +17,8 @@ export interface Device extends mongoose.Document {
     created_at: Date,
     is_registered: boolean,
     registered_at: Date,
+    verified: boolean,
+    verified_at: Date | null,
 }
 
 export const DeviceModel = mongoose.model<Device>('devices', devicesSchema);

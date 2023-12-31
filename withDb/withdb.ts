@@ -18,7 +18,7 @@ import * as XLSX from 'xlsx';
 import { connect } from './db/connect';
 import { Device, DeviceModel } from './db/devices-schema';
 import UserModel from './db/users-schema';
-
+import { ProductModel } from './db/products-schema';
 
 const main = async () => {
     //await filterDuplicates(config.excel_file_name);
@@ -27,19 +27,13 @@ const main = async () => {
     //get the name of the highest row of the 3rd column
     const addresses: string[] = [];
     const addressesCount = new Map<string, {
-        devices_types: string[]
+        devices_info: Array<{
+            type: string,
+            verified: boolean
+        }>
     }>();
 
-    const miner_type = config.miner_type as MinerType;
-    console.log("Regular Expression:", new RegExp('^' + miner_type, 'i'));
-    console.log("Miner Type:", miner_type);
-
-    const allDevices = miner_type && miner_type !== 'all'
-        ? await DeviceModel.find({
-            is_registered: true,
-            miner_key: new RegExp('^' + miner_type + '-[A-Za-z0-9]{32}$', 'i')
-        })
-        : await DeviceModel.find({ is_registered: true });
+    const allDevices = await DeviceModel.find({ is_registered: true });
     const users = new Map<string, Device[]>(); //key: address, value: array of devices
     allDevices.map((device) => {
         const stringifiedId = device.user_id.toString();
@@ -54,24 +48,32 @@ const main = async () => {
 
     const userPromises = Array.from(users.entries()).map(async ([userId, devices]) => {
         const user = await UserModel.findById(userId);
-        if(!user.address) return;
+        if (!user.address) return;
         const numberOfDevices = devices.length;
-
+    
+        // Prepare data for each device, including its type and verified status
+        const deviceData = devices.map(device => ({
+            type: device.miner_key.split('-')[0],
+            verified: device.verified // Assuming 'verified' is a boolean property of each device
+        }));
+    
         if (addressesCount.has(user.address)) {
             const currentData = addressesCount.get(user.address)!;
             addressesCount.set(user.address, {
-                devices_types: [...currentData.devices_types, ...devices.map((device) => device.miner_key.split('-')[0])]
+                // Spread the existing devices and add the new device data
+                devices_info: [...currentData.devices_info, ...deviceData]
             });
-
+    
         } else {
             addressesCount.set(user.address, {
-                devices_types: devices.map((device) => device.miner_key.split('-')[0])
+                devices_info: deviceData // Set the new device data
             });
         }
         if (!addresses.includes(user.address)) {
             addresses.push(user.address);
         }
     });
+    
 
     // This will wait for all the user promises to finish before continuing to the next row
     await Promise.all(userPromises);
@@ -86,16 +88,21 @@ const main = async () => {
     const enc = new TextEncoder();
     const note = enc.encode(config.note_to_send);
     const params = await client.getTransactionParams().do();
+    const products = await ProductModel.find({});
     for (const address of addresses) {
         try {
-            const devices = addressesCount.get(address)?.devices_types || [];
+            const devices = addressesCount.get(address)?.devices_info || [];
             const count = devices.length;
             const transactionsNeeded = 24 * count;
-            const FRYamount = devices.reduce((acc, device) => acc + FRYamounts[device as MinerType], 0);
+            const FRYamount = devices.reduce((acc, device) => {
+                const associatedProduct = products.find((product) => product.key === device.type);
+                const reward = (device.verified ? associatedProduct?.reward?.verified : associatedProduct?.reward?.unverified) || 0;
+                return acc + reward;
+            }, 0);
             const lastTransactions = await indexer.lookupAccountTransactions(address).limit(transactionsNeeded + 10).do();
             //get all the transactions of the address that were done in the last 24 hours
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-            
+
             const lastTransactionsInLast24Hours: Array<any> = lastTransactions.transactions.filter((transaction: Transaction) => {
                 const transactionDate = new Date(transaction['round-time'] * 1000);
                 const isTheSender = transaction.sender === address;
@@ -103,7 +110,7 @@ const main = async () => {
                 const isFRY = transaction['asset-transfer-transaction'] && transaction['asset-transfer-transaction']['asset-id'] === config.asset_index;
                 return (transactionDate > oneDayAgo && isTheSender && isAmountZero && isFRY)
             });
-            
+
             //if there is at least 24 transactions in the last 24 hours, with 0 amount, then send the FRY
 
             let mult = 1;
@@ -116,7 +123,7 @@ const main = async () => {
             //calculate the amount to send and round it to two numbers after the dot
             const amountToSend = Math.floor(Math.round(FRYamount * mult * 100) / 100)
             console.log(`amount for ${address} is ${amountToSend} -- ${lastTransactionsInLast24Hours.length} transactions in the last 24 hours}`)
-         
+
             if (amountToSend > 0) {
 
                 if (!(await hasOptedInForAsset(address, config.asset_index))) {
@@ -169,33 +176,6 @@ async function optInForAsset(fromAccount: algosdk.Account, toAddress: string, as
     await client.sendRawTransaction(signedOptInTxn).do();
 }
 
-/*Hardware Bandwidth: 215720000
-BYOD Bandwidth: 107860000
-Hardware Indoor Satellite: 165720000 
-BYOD Indoor Satellite: 82860000
-Hardware Outdoor Satellite: 215720000
-BYOD Outdoor Satellite: 107860000
-Hardware Indoor Decibel: 215720000
-BYOD Indoor Decibel: 107860000
-Hardware Outdoor Decibel: 215720000
-BYOD Outdoor Decibel: 107860000
-
-Bandwidth: VPN
-Indoor Satellite: IGPS
-Outdoor Satellite: OGPS
-Indoor Decibel: IDB
-Outdoor Decibel: ODB
-
-*/
-const FRYamounts = {
-    'VPN': 215720000,
-    'IGPS': 165720000,
-    'OGPS': 215720000,
-    'IDB': 215720000,
-    'ODB': 215720000,
-    'all': 215720000
-} as const;
-
 interface Transaction {
     'close-rewards': number;
     'closing-amount': number;
@@ -220,5 +200,3 @@ interface Transaction {
     signature: Object;
     'tx-type': string;
 }
-
-type MinerType = 'VPN' | 'IGPS' | 'OGPS' | 'IDB' | 'ODB' | 'all';
