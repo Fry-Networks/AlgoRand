@@ -94,6 +94,7 @@ const main = async () => {
             const devices = addressesCount.get(address)?.devices_info || [];
             const count = devices.length;
             const transactionsNeeded = 24 * count;
+            console.log(devices)
             const FRYamount = devices.reduce((acc, device) => {
                 const associatedProduct = products.find((product) => product.key === device.type);
                 const reward = (device.verified ? associatedProduct?.reward?.verified : associatedProduct?.reward?.unverified) || 0;
@@ -121,6 +122,7 @@ const main = async () => {
             }
 
             //calculate the amount to send and round it to two numbers after the dot
+            console.log(FRYamount)
             const amountToSend = Math.floor(Math.round(FRYamount * mult * 100) / 100)
             console.log(`amount for ${address} is ${amountToSend} -- ${lastTransactionsInLast24Hours.length} transactions in the last 24 hours}`)
 
